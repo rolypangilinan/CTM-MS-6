@@ -1,0 +1,127 @@
+{
+  "latency": 100,
+  "elapsed_time": {
+    "millisecond": false,
+    "blinking": true
+  },
+  "generate_csv": true,
+  "csv_export_options": {
+    "default_job_order": "3J73802302",
+    "include_metadata": true,
+    "replace_nulls": true,
+    "trim_strings": true,
+    "format_dates": true,
+    "encoding": "utf-8-sig"
+  },
+  "last_csv_export": {
+    "filename": "torisql_materials_3J73802302_20260429_082629.csv",
+    "timestamp": "2026-04-29T08:26:29.418082",
+    "record_count": 47,
+    "job_order": "3J73802302"
+  },
+  "column_headers": [
+    "REF KITTING MTLS",
+    "MATERIAL DESCRIPTION",
+    "MATERIAL CODE",
+    "QTY/UNIT",
+    "SCAN MATERIAL",
+    "LOT NO",
+    "LOT QTY",
+    "REM QTY"
+  ],
+  "sub_columns": [
+    "Job Order No:",
+    "Model Code:",
+    "Quantity:"
+  ],
+  "action_buttons": [
+    "Delete",
+    "Main Menu",
+    "COMPLETE"
+  ],
+  "column_widths": [
+    "100",
+    "450",
+    "150",
+    "60",
+    "200",
+    "60",
+    "200",
+    "60",
+    "50"
+  ],
+  "column_lengths": [
+    "200",
+    "450",
+    "200",
+    "60",
+    "180",
+    "150",
+    "60",
+    "80"
+  ],
+  "ref_kitting_format": "text_and_num",
+  "page_title": "Job Order and Material Data",
+  "qr_code_hidden": false,
+  "display_rows": 14,
+  "qr_date_format": "none",
+  "selected_printer": "logicowl",
+  "ks_column_headers": [
+    "MATERIAL DESCRIPTION",
+    "QTY/Unit",
+    "SCAN MATERIAL",
+    "LOT NO",
+    "QTY / KIT",
+    "LOT QTY",
+    "REM QTY",
+    "EDIT"
+  ],
+  "ks_column_lengths": [
+    386,
+    85,
+    149,
+    149,
+    85,
+    85,
+    85,
+    79
+  ],
+  "ks_column_aligns": [
+    "left",
+    "center",
+    "left",
+    "left",
+    "center",
+    "center",
+    "center",
+    "center"
+  ],
+  "column_aligns": [
+    "left",
+    "left",
+    "left",
+    "left",
+    "left",
+    "left",
+    "left",
+    "left"
+  ],
+  "ks_box_width": 1200,
+  "ks_box_height": 448,
+  "ks_num_col_name": "#",
+  "ks_num_col_length": 69,
+  "ks_num_col_align": "center",
+  "hidden_apps": [
+    "calibration",
+    "ms_tablet_view"
+  ],
+  "hideable_apps": {
+    "calibration": "Calibration",
+    "ms_tablet_view": "Tablet View Hide/Unhide",
+    "ms_display_rows": "Display # of Rows",
+    "ms_mtrl_manpower": "MTRL Set Manpower",
+    "ms_qr_format": "KIT QR Code Format",
+    "ms_qr_font_size": "KIT QR Font Size",
+    "ms_ks_column": "Kitting Summary Column"
+  }
+}

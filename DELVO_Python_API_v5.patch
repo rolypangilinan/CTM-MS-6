@@ -1,0 +1,207 @@
+--- /mnt/data/_old_norm.py	2026-09-29 04:08:05.718807887 +0000
++++ /mnt/data/_new_norm.py	2026-09-29 04:08:05.721180151 +0000
+@@ -110,29 +110,59 @@
+ p1_kitting_scanned_data = None
+ p1_kitting_scanned_data_lock = threading.Lock()
+ 
+-# DELVO Android tablet QR mirror.
++# DELVO Android tablet QR mirror (Process 1 to Process 9 + Material Setter).
+ # This is NON-DESTRUCTIVE: the existing browser endpoints may continue to
+-# consume kitting_scanned_data / p1_kitting_scanned_data normally, while the
+-# tablet reads its own latest-scan mirror without clearing anything.
++# consume their normal read-once scanner values, while DELVO tablets read an
++# independent latest-scan mirror without clearing anything.
++#
++# IMPORTANT: Process mirrors p1..p9 are updated only AFTER /api/validate_kitting_qr
++# accepts the QR for that process. This prevents an invalid/wrong-process QR from
++# becoming the active Kitting Number in a DELVO tablet.
+ delvo_kitting_mirror = {
+-    "ms": {"scan_id": 0, "kitting_qr": "", "timestamp": None},
+-    "p1": {"scan_id": 0, "kitting_qr": "", "timestamp": None},
++    "ms": {
++        "scan_id": 0, "kitting_qr": "", "timestamp": None,
++        "process_no": None, "kitting_no": None, "job_order": "", "model_code": ""
++    },
+ }
++for _delvo_process_no in range(1, 10):
++    delvo_kitting_mirror[f"p{_delvo_process_no}"] = {
++        "scan_id": 0, "kitting_qr": "", "timestamp": None,
++        "process_no": _delvo_process_no, "kitting_no": None,
++        "job_order": "", "model_code": ""
++    }
++
+ delvo_kitting_mirror_lock = threading.Lock()
+ 
+-def update_delvo_kitting_mirror(source, kitting_qr):
+-    """Publish a kitting QR to the DELVO tablet mirror without consuming the normal UI scan."""
++def update_delvo_kitting_mirror(source, kitting_qr, process_no=None, kitting_no=None,
++                                 job_order="", model_code=""):
++    """Publish a Kitting QR to the DELVO tablet mirror without consuming normal UI data."""
+     from datetime import datetime
+     source = str(source or "").lower().strip()
+     if source not in delvo_kitting_mirror:
+-        return
++        return False
++
++    qr_value = str(kitting_qr or "").strip()
++    if not qr_value:
++        return False
++
+     with delvo_kitting_mirror_lock:
+         entry = delvo_kitting_mirror[source]
+         entry["scan_id"] += 1
+-        entry["kitting_qr"] = str(kitting_qr or "").strip()
++        entry["kitting_qr"] = qr_value
+         entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
++        if process_no is not None:
++            entry["process_no"] = int(process_no)
++        if kitting_no is not None:
++            entry["kitting_no"] = int(kitting_no)
++        entry["job_order"] = str(job_order or "")
++        entry["model_code"] = str(model_code or "")
+         scan_id = entry["scan_id"]
+-    print(f"DELVO QR MIRROR [{source.upper()}]: scan_id={scan_id}, qr={kitting_qr}")
++
++    print(
++        f"DELVO QR MIRROR [{source.upper()}]: scan_id={scan_id}, "
++        f"process={process_no}, kitting_no={kitting_no}, qr={qr_value}"
++    )
++    return True
+ 
+ # Server-side blocked counters tracking (replaces localStorage blocked_counters)
+ # Format: { process_no: [list of blocked kitting numbers] }
+@@ -3735,13 +3765,25 @@
+             prev_completed = db_manager.get_completed_count(process_no - 1)
+             if actual_kitting_no > prev_completed:
+                 return jsonify({"success": False, "error": f"Cannot start. Process {process_no - 1} has only completed {prev_completed} kittings. Waiting for Kitting {actual_kitting_no}."})
++
++        # 5. DELVO Process 1-9 mirror. Publish ONLY after all normal validation
++        # checks above pass. Each tablet reads only the process assigned to it.
++        validated_qr = str(kitting_record.get('kitting_qr_code', '') or qr_code).strip()
++        update_delvo_kitting_mirror(
++            f"p{process_no}",
++            validated_qr,
++            process_no=process_no,
++            kitting_no=actual_kitting_no,
++            job_order=kitting_record.get('job_order', ''),
++            model_code=kitting_record.get('model_code', '')
++        )
+         
+         return jsonify({
+             "success": True,
+             "kitting_no": actual_kitting_no,
+             "job_order": kitting_record.get('job_order', ''),
+             "model_code": kitting_record.get('model_code', ''),
+-            "kitting_qr_code": kitting_record.get('kitting_qr_code', ''),
++            "kitting_qr_code": validated_qr,
+             "plan": kitting_record.get('plan', '')
+         })
+     except Exception as e:
+@@ -4576,9 +4618,9 @@
+             return jsonify({"success": False, "error": "Empty P1 kitting scan data"}), 400
+         with p1_kitting_scanned_data_lock:
+             p1_kitting_scanned_data = kitting_qr
+-        # Also publish to DELVO Android tablet mirror. Process 1 is the default
+-        # source used by the DELVO fastening monitor tablet.
+-        update_delvo_kitting_mirror("p1", kitting_qr)
++        # Do not publish directly to the DELVO process mirror here. The Process 1
++        # QR is published only after /api/validate_kitting_qr accepts it, matching
++        # the same behavior used for Processes 2-9.
+         # Signal MS Arduino to end scan cycle and power off Scanner 4 relay
+         with ms_pending_commands_lock:
+             ms_pending_commands.append("P1_KIT_SCAN_DONE")
+@@ -4605,23 +4647,37 @@
+ 
+ @app.route("/api/delvo/latest_kitting", methods=["GET"])
+ def get_delvo_latest_kitting():
+-    """Non-destructive latest-kitting API for the DELVO Android tablet.
++    """Non-destructive latest-kitting API for DELVO Android tablets.
++
++    Preferred query for v0.5.0+:
++      process=1 ... process=9
++
++    Backward-compatible queries from v0.4.0 are also accepted:
++      source=p1 ... source=p9
++      source=ms
+ 
+-    Query:
+-      source=p1  -> Process 1 kitting R35D-B scanner (default)
+-      source=ms  -> Material Setter kitting R35D-B scanner
+-
+-    Unlike /api/ms_get_kitting_scan and /api/p1_get_kitting_scan, this endpoint
+-    DOES NOT clear the scan after reading it, so the Android tablet and the
+-    existing browser UI cannot steal the scan from each other.
++    Reading this endpoint NEVER clears the normal browser scanner value.
+     """
+     try:
+-        source = request.args.get("source", "p1").lower().strip()
+-        if source not in ("p1", "ms"):
+-            return jsonify({
+-                "success": False,
+-                "error": "Invalid source. Use 'p1' or 'ms'."
+-            }), 400
++        process_arg = request.args.get("process", None)
++        source_arg = request.args.get("source", None)
++
++        if process_arg is not None:
++            try:
++                process_no = int(process_arg)
++            except (TypeError, ValueError):
++                return jsonify({"success": False, "error": "Process must be a number from 1 to 9."}), 400
++            if process_no < 1 or process_no > 9:
++                return jsonify({"success": False, "error": "Process must be from 1 to 9."}), 400
++            source = f"p{process_no}"
++        else:
++            source = str(source_arg or "p1").lower().strip()
++            valid_sources = ["ms"] + [f"p{i}" for i in range(1, 10)]
++            if source not in valid_sources:
++                return jsonify({
++                    "success": False,
++                    "error": "Invalid source. Use process=1..9, source=p1..p9, or source=ms."
++                }), 400
+ 
+         with delvo_kitting_mirror_lock:
+             entry = dict(delvo_kitting_mirror[source])
+@@ -4629,8 +4685,12 @@
+         return jsonify({
+             "success": True,
+             "source": source,
++            "process_no": entry.get("process_no"),
+             "scan_id": entry.get("scan_id", 0),
+             "kitting_qr": entry.get("kitting_qr", ""),
++            "kitting_no": entry.get("kitting_no"),
++            "job_order": entry.get("job_order", ""),
++            "model_code": entry.get("model_code", ""),
+             "timestamp": entry.get("timestamp"),
+             "server_start_time": SERVER_START_TIME
+         })
+@@ -4640,17 +4700,24 @@
+ 
+ @app.route("/api/delvo/status", methods=["GET"])
+ def get_delvo_status():
+-    """Simple health endpoint used by the Android DELVO app."""
++    """Health/status endpoint for DELVO Process 1-9 Android tablets."""
+     try:
+         with delvo_kitting_mirror_lock:
+-            p1 = dict(delvo_kitting_mirror["p1"])
+-            ms = dict(delvo_kitting_mirror["ms"])
++            process_scan_ids = {
++                str(i): delvo_kitting_mirror[f"p{i}"].get("scan_id", 0)
++                for i in range(1, 10)
++            }
++            ms_scan_id = delvo_kitting_mirror["ms"].get("scan_id", 0)
+         return jsonify({
+             "success": True,
+             "service": "DELVO QR Bridge",
++            "version": "5.0",
++            "supported_processes": list(range(1, 10)),
+             "server_start_time": SERVER_START_TIME,
+-            "p1_scan_id": p1.get("scan_id", 0),
+-            "ms_scan_id": ms.get("scan_id", 0)
++            "process_scan_ids": process_scan_ids,
++            "ms_scan_id": ms_scan_id,
++            # Kept for compatibility with v0.4.0 clients.
++            "p1_scan_id": process_scan_ids.get("1", 0)
+         })
+     except Exception as e:
+         return jsonify({"success": False, "error": str(e)}), 500

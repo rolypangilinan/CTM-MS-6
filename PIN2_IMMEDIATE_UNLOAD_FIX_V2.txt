@@ -1,0 +1,13 @@
+PIN 2 IMMEDIATE UNLOAD FIX V2
+
+Built directly from the user-uploaded project.
+Only these runtime files were changed:
+1. arduino_ms/arduino_ms.ino
+2. cycleTimeMoni.py
+3. templates/material_setter.html
+
+Behavior:
+- Cover Pin 2 -> MS1LOAD -> Scan ID popup/scanner works as before.
+- Remove cover before scanning -> after 200ms stable HIGH, scanner stops/powers OFF and MS1UNLOAD is sent.
+- Remove ID after successful registration -> no 2-second unload delay; state returns to LOAD ID quickly.
+- Existing interlock-open unload protection is preserved.

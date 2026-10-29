@@ -1,0 +1,86 @@
+DELVO TABLET MONITOR v0.5.0 - PROCESS 1 TO 9
+================================================
+
+FILES
+-----
+1. 57_MS_CTM_COMBINE_FIXED_BADGE_DELVO_API_v5.py
+   Modified current Flask/Python program.
+
+2. DELVO_USB60F_Android_v5_Source.zip
+   Flutter Android source. Same APK is used for Process 1 to Process 9.
+
+3. DELVO_Python_API_v5.patch
+   Small normalized diff showing the Python changes from v4.
+
+PYTHON SIDE
+-----------
+Back up the existing production Python file before replacing it.
+The Flask server remains on the same port already used by your program (5001).
+
+New process-specific tablet API:
+  GET /api/delvo/latest_kitting?process=1
+  GET /api/delvo/latest_kitting?process=2
+  ...
+  GET /api/delvo/latest_kitting?process=9
+
+Health endpoint:
+  GET /api/delvo/status
+
+The process mirror is updated only after /api/validate_kitting_qr accepts the
+Kitting QR for that process. Operator ID QR values are NOT copied into the
+DELVO Kitting Number.
+
+ANDROID SIDE
+------------
+Build the source on the Windows PC that already has Flutter/Android Studio:
+
+  flutter pub get
+  flutter build apk --release
+
+APK output:
+  build\app\outputs\flutter-apk\app-release.apk
+
+On every tablet install the SAME APK, then open:
+  Communication setting
+    > Kitting QR Reader / Python Bridge
+    > Python / Arduino
+    > Python Flask server URL = http://<PC-IP>:5001
+    > This tablet is assigned to = Process 1 ... Process 9
+    > Save QR bridge
+    > Test connection
+
+When changing the process assignment, the app clears the previous active
+Kitting Number automatically.
+
+QUICK NETWORK TEST
+------------------
+From the tablet browser, test:
+  http://<PC-IP>:5001/api/delvo/status
+
+For a Process 4 tablet, test:
+  http://<PC-IP>:5001/api/delvo/latest_kitting?process=4
+
+Before a QR has been validated for Process 4, scan_id should be 0.
+After a valid Process 4 Kitting QR is scanned/validated, scan_id should
+increment and kitting_qr should contain the scanned Kitting QR.
+
+CSV
+---
+Visible copy:
+  Internal storage/Download/DELVO/
+  TighteningHistory_Process_Kitting_YYYYMMDD.csv
+
+The CSV now includes:
+  Timestamp, Process, KittingNumber, Channel, ConvertedCurrent, TCFactor,
+  Torque, Unit, Measurement, MeasuringMethod, Result, Checksum, Raw
+
+IMPORTANT TEST BEFORE PRODUCTION
+--------------------------------
+For each process that will have a DELVO tablet:
+1. Set the tablet to the correct Process number.
+2. Scan/validate one Kitting QR at that process.
+3. Confirm only that process tablet changes Kitting Number.
+4. Scan an operator ID QR and confirm the DELVO Kitting Number does not change.
+5. Tighten one screw and confirm Process + Kitting Number + torque/result are
+   written to the CSV.
+6. Test a wrong-process/invalid Kitting QR and confirm it does not become active.
